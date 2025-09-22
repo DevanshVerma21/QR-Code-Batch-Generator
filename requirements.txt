@@ -1,0 +1,6 @@
+# Python dependencies for Railway QR Generator
+Flask==2.3.3
+Flask-CORS==4.0.0
+qrcode[pil]==7.4.2
+Pillow==10.0.1
+requests==2.31.0

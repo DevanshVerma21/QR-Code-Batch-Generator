@@ -1,0 +1,36 @@
+# Render deployment configuration
+# This file tells Render how to build and run your application
+
+# Build settings
+buildCommand: npm run build
+startCommand: npm start
+
+# Environment settings
+env: node
+
+# Static site settings (if deploying as static)
+# staticPublishPath: ./out
+
+# For full-stack deployment with backend
+services:
+  - type: web
+    name: railway-qr-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://your-app-name-backend.onrender.com
+
+  - type: web
+    name: railway-qr-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 10000

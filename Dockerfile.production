@@ -1,0 +1,91 @@
+# Multi-stage Docker setup for Railway QR Generator
+# This file includes both frontend and backend in a single deployment
+
+# Stage 1: Frontend build
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY next.config.js ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source code
+COPY app/ ./app/
+COPY components/ ./components/
+COPY services/ ./services/
+COPY styles/ ./styles/
+COPY types/ ./types/
+COPY public/ ./public/
+
+# Build the frontend
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# Stage 2: Backend setup
+FROM python:3.11-slim AS backend-base
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python requirements
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend files
+COPY app.py ./
+COPY database.py ./
+COPY db_manager.py ./
+
+# Stage 3: Production runner
+FROM python:3.11-slim AS production
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python dependencies
+COPY --from=backend-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=backend-base /usr/local/bin /usr/local/bin
+
+# Copy backend application
+COPY --from=backend-base /app/*.py ./
+
+# Install Node.js for serving frontend
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs
+
+# Copy built frontend
+COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend/
+COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
+COPY --from=frontend-builder /app/frontend/public ./frontend/public
+
+# Create startup script
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+
+# Create directories for data persistence
+RUN mkdir -p /app/data
+VOLUME ["/app/data"]
+
+# Expose ports
+EXPOSE 3000 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/get_current_count || exit 1
+
+# Start both services
+CMD ["./docker-entrypoint.sh"]
