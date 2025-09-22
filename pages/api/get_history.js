@@ -1,24 +1,5 @@
 // pages/api/get_history.js
-import { promises as fs } from 'fs';
-import path from 'path';
-
-// Default records
-let records = {
-  total_count: 0,
-  year_counts: {},
-  sessions: []
-};
-
-// Load records from file if it exists
-async function loadRecords() {
-  try {
-    const recordsPath = path.join(process.cwd(), 'data', 'records.json');
-    const data = await fs.readFile(recordsPath, 'utf8');
-    records = JSON.parse(data);
-  } catch (error) {
-    // File doesn't exist, use default records
-  }
-}
+import { getHistory } from '../../lib/storage.js';
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -40,14 +21,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    await loadRecords();
-    
-    // Return last 10 sessions for compatibility
-    const recentSessions = records.sessions.slice(-10);
+    const sessions = await getHistory();
     
     return res.status(200).json({
-      total_count: records.total_count,
-      sessions: recentSessions
+      success: true,
+      sessions: sessions
     });
 
   } catch (error) {

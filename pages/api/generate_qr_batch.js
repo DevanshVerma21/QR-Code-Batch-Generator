@@ -1,39 +1,8 @@
 // pages/api/generate_qr_batch.js
 import QRCode from 'qrcode';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { addSession } from '../../lib/storage.js';
 
-// In-memory storage for demo (you'd use a database in production)
-let records = {
-  total_count: 0,
-  year_counts: {},
-  sessions: []
-};
-
-// Load records from file if it exists
-async function loadRecords() {
-  try {
-    const recordsPath = path.join(process.cwd(), 'data', 'records.json');
-    const data = await fs.readFile(recordsPath, 'utf8');
-    records = JSON.parse(data);
-  } catch (error) {
-    // File doesn't exist, use default records
-  }
-}
-
-// Save records to file
-async function saveRecords() {
-  try {
-    const dataDir = path.join(process.cwd(), 'data');
-    await fs.mkdir(dataDir, { recursive: true });
-    const recordsPath = path.join(dataDir, 'records.json');
-    await fs.writeFile(recordsPath, JSON.stringify(records, null, 2));
-  } catch (error) {
-    console.error('Error saving records:', error);
-  }
-}
-
-function getNextSerialNumber(year, quantity) {
+function getNextSerialNumber(records, year, quantity) {
   const yearStr = String(year);
   if (!records.year_counts[yearStr]) {
     records.year_counts[yearStr] = 0;
@@ -61,8 +30,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    await loadRecords();
-
     const { part_name, vendor_name, year, location, quantity } = req.body;
 
     // Validate required fields
@@ -70,7 +37,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const startSerial = getNextSerialNumber(year, quantity);
+    // Load current records to get the next serial number
+    const { loadRecords } = await import('../../lib/storage.js');
+    const records = await loadRecords();
+    
+    const startSerial = getNextSerialNumber(records, year, quantity);
     const qrCodes = [];
 
     for (let i = 0; i < quantity; i++) {
@@ -98,7 +69,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Update records
+    // Update records using persistent storage
     const serialRange = `${String(startSerial).padStart(4, '0')}-${String(startSerial + quantity - 1).padStart(4, '0')}`;
     
     const sessionInfo = {
@@ -111,15 +82,7 @@ export default async function handler(req, res) {
       serial_range: serialRange
     };
 
-    records.total_count += quantity;
-    const yearStr = String(year);
-    if (!records.year_counts[yearStr]) {
-      records.year_counts[yearStr] = 0;
-    }
-    records.year_counts[yearStr] += quantity;
-    records.sessions.push(sessionInfo);
-
-    await saveRecords();
+    const updatedRecords = await addSession(sessionInfo);
 
     return res.status(200).json({
       success: true,
@@ -131,8 +94,8 @@ export default async function handler(req, res) {
         location,
         quantity,
         serial_range: serialRange,
-        total_generated: records.total_count,
-        year_count: records.year_counts[yearStr]
+        total_generated: updatedRecords.total_count,
+        year_count: updatedRecords.year_counts[String(year)] || 0
       }
     });
 

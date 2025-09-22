@@ -1,24 +1,5 @@
 // pages/api/get_current_count.js
-import { promises as fs } from 'fs';
-import path from 'path';
-
-// Default records
-let records = {
-  total_count: 0,
-  year_counts: {},
-  sessions: []
-};
-
-// Load records from file if it exists
-async function loadRecords() {
-  try {
-    const recordsPath = path.join(process.cwd(), 'data', 'records.json');
-    const data = await fs.readFile(recordsPath, 'utf8');
-    records = JSON.parse(data);
-  } catch (error) {
-    // File doesn't exist, use default records
-  }
-}
+import { getCurrentCount, loadRecords } from '../../lib/storage.js';
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -40,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    await loadRecords();
+    const records = await loadRecords();
     
     return res.status(200).json({
       total_count: records.total_count,
